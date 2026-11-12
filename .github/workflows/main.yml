@@ -1,42 +1,73 @@
 
-name: Build Flutter APK
+name: Flutter Build
 
 on:
-  workflow_dispatch:
   push:
     branches:
-      - main
+      - master
+
+  pull_request:
+    branches:
+      - master
+
+  workflow_dispatch:
 
 jobs:
   build:
+    name: Build Flutter APK
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # 1. Mengambil kode dari repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      # 2. Mengatur Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Check Java
-        run: java -version
-
+      # 3. Mengatur Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
+      # 4. Memeriksa versi Java dan Flutter
+      - name: Check Environment
+        run: |
+          java -version
+          flutter --version
+
+      # 5. Memperbarui Gradle Wrapper
+      - name: Update Gradle Wrapper
+        run: |
+          sed -i -E 's/gradle-[0-9.]+-(all|bin)\.zip/gradle-9.3.1-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
+
+      # 6. Memastikan Gradle sudah diperbarui
+      - name: Verify Gradle Version
+        run: |
+          cat android/gradle/wrapper/gradle-wrapper.properties
+          grep -q 'gradle-9.3.1-all.zip' android/gradle/wrapper/gradle-wrapper.properties
+
+      # 7. Mengunduh dependencies Flutter
       - name: Install Dependencies
         run: flutter pub get
 
-      - name: Build APK
+      # 8. Membersihkan project
+      - name: Clean Project
+        run: flutter clean
+
+      # 9. Membuat APK Release
+      - name: Build APK Release
         run: flutter build apk --release
 
+      # 10. Mengunggah APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: aplikasi-hukum-ohm
           path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
