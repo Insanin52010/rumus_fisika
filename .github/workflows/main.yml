@@ -18,53 +18,147 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Mengambil kode dari repository
+      # 1. Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Mengatur Java
-      - name: Setup Java 17
+      # 2. Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # 3. Mengatur Flutter
+      # 3. Setup Flutter
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
 
-      # 4. Memeriksa versi Java dan Flutter
+      # 4. Check Environment
       - name: Check Environment
         run: |
           java -version
           flutter --version
 
-      # 5. Memperbarui Gradle Wrapper
-      - name: Update Gradle Wrapper
+      # 5. Update Gradle Wrapper
+      - name: Update Gradle
         run: |
-          sed -i -E 's/gradle-[0-9.]+-(all|bin)\.zip/gradle-9.3.1-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
 
-      # 6. Memastikan Gradle sudah diperbarui
-      - name: Verify Gradle Version
+          path = Path("android/gradle/wrapper/gradle-wrapper.properties")
+
+          content = path.read_text()
+
+          content, count = re.subn(
+              r'gradle-[0-9.]+-(all|bin)\.zip',
+              'gradle-9.3.1-all.zip',
+              content,
+              count=1
+          )
+
+          if count == 0:
+              raise SystemExit("Gradle Wrapper tidak ditemukan!")
+
+          path.write_text(content)
+          print("Gradle berhasil diperbarui!")
+          print(content)
+          PY
+
+      # 6. Update Android Gradle Plugin
+      - name: Update Android Gradle Plugin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          files = [
+              Path("android/settings.gradle"),
+              Path("android/settings.gradle.kts")
+          ]
+
+          updated = False
+
+          for path in files:
+              if not path.exists():
+                  continue
+
+              content = path.read_text()
+
+              pattern = (
+                  r'(id\s*\(?\s*["\']com\.android\.application'
+                  r'["\']\s*\)?\s+version\s+["\'])'
+                  r'[^"\']+'
+                  r'(["\'])'
+              )
+
+              new_content, count = re.subn(
+                  pattern,
+                  r'\g<1>9.1.1\g<2>',
+                  content,
+                  count=1
+              )
+
+              if count:
+                  path.write_text(new_content)
+                  print("AGP berhasil diperbarui di", path)
+                  updated = True
+                  break
+
+          if not updated:
+              print("Mencoba format Gradle lama...")
+
+              for path in [
+                  Path("android/build.gradle"),
+                  Path("android/build.gradle.kts")
+              ]:
+                  if not path.exists():
+                      continue
+
+                  content = path.read_text()
+
+                  new_content, count = re.subn(
+                      r'(com\.android\.tools\.build:gradle:)'
+                      r'[0-9.]+',
+                      r'\g<1>9.1.1',
+                      content,
+                      count=1
+                  )
+
+                  if count:
+                      path.write_text(new_content)
+                      print("AGP berhasil diperbarui di", path)
+                      updated = True
+                      break
+
+          if not updated:
+              raise SystemExit(
+                  "Versi AGP tidak ditemukan. Periksa konfigurasi Android."
+              )
+          PY
+
+      # 7. Verify Versions
+      - name: Verify Gradle and AGP
         run: |
           cat android/gradle/wrapper/gradle-wrapper.properties
-          grep -q 'gradle-9.3.1-all.zip' android/gradle/wrapper/gradle-wrapper.properties
+          grep -n "com.android.application" android/settings.gradle* || true
+          java -version
 
-      # 7. Mengunduh dependencies Flutter
+      # 8. Install Dependencies
       - name: Install Dependencies
         run: flutter pub get
 
-      # 8. Membersihkan project
+      # 9. Clean Project
       - name: Clean Project
         run: flutter clean
 
-      # 9. Membuat APK Release
+      # 10. Build APK
       - name: Build APK Release
         run: flutter build apk --release
 
-      # 10. Mengunggah APK
+      # 11. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
